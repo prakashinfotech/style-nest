@@ -1,0 +1,66 @@
+name: Accessibility Gate — axe-core (ENH-INFRA-010)
+# NFR-A11Y-001: WCAG 2.1 AA, 0 critical violations on key storefront routes.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "user-panel/**"
+      - "e2e/tests/a11y.spec.ts"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Storefront base URL to test"
+        required: false
+        default: "http://localhost:4200"
+
+jobs:
+  a11y:
+    name: axe-core WCAG 2.1 AA
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Install user-panel dependencies
+        working-directory: user-panel
+        run: npm ci
+
+      - name: Build user-panel
+        working-directory: user-panel
+        run: npx ng build --configuration production
+
+      - name: Serve user-panel
+        working-directory: user-panel
+        run: npx serve dist/user-panel/browser -l 4200 &
+
+      - name: Wait for server
+        run: npx wait-on http://localhost:4200 --timeout 30000
+
+      - name: Run axe-core accessibility tests
+        working-directory: e2e
+        run: npx playwright test tests/a11y.spec.ts --reporter=html
+        env:
+          BASE_URL: ${{ inputs.base_url || 'http://localhost:4200' }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-report-${{ github.run_id }}
+          path: e2e/playwright-report/
+          retention-days: 30

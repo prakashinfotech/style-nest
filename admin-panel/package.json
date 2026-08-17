@@ -1,0 +1,46 @@
+{
+  "name": "admin-panel",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/animations": "21.2.12",
+    "@angular/cdk": "21.2.12",
+    "@angular/common": "21.2.12",
+    "@angular/compiler": "21.2.12",
+    "@angular/core": "21.2.12",
+    "@angular/forms": "21.2.12",
+    "@angular/material": "21.2.12",
+    "@angular/platform-browser": "21.2.12",
+    "@angular/router": "21.2.12",
+    "@ngrx/effects": "^21.1.0",
+    "@ngrx/entity": "^21.1.0",
+    "@ngrx/store": "^21.1.0",
+    "@ngrx/store-devtools": "^21.1.0",
+    "apexcharts": "^5.12.0",
+    "autoprefixer": "^10.5.0",
+    "lucide-angular": "^1.0.0",
+    "ng-apexcharts": "^2.4.0",
+    "postcss": "^8.5.13",
+    "rxjs": "~7.8.0",
+    "tailwindcss": "^3.4.19",
+    "tslib": "^2.3.0",
+    "zone.js": "^0.16.2"
+  },
+  "devDependencies": {
+    "@angular/build": "21.2.12",
+    "@angular/cli": "21.2.12",
+    "@angular/compiler-cli": "21.2.12",
+    "jsdom": "^28.0.0",
+    "typescript": "~5.9.2",
+    "vitest": "^4.0.8"
+  }
+}

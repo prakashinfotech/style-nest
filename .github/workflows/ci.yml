@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feature-improvement]
+  pull_request:
+    branches: [main]
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  NODE_VERSION: "22.x"
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # Backend — build, test, docker build
+  # ─────────────────────────────────────────────────────────
+  backend:
+    name: .NET Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore NuGet packages
+        run: dotnet restore backend/stylenest-clone.slnx
+
+      - name: Build solution
+        run: dotnet build backend/stylenest-clone.slnx --no-restore --configuration Release
+
+      - name: Run unit tests
+        run: >
+          dotnet test backend/stylenest-clone.slnx
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ./test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./test-results/*.trx
+
+  # ─────────────────────────────────────────────────────────
+  # Docker build — verify all Dockerfiles build cleanly
+  # ─────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: backend
+
+    strategy:
+      matrix:
+        service:
+          - { name: auth-api,     dockerfile: backend/src/Services/StyleNest.Auth.API/Dockerfile }
+          - { name: user-api,     dockerfile: backend/src/Services/StyleNest.User.API/Dockerfile }
+          - { name: catalog-api,  dockerfile: backend/src/Services/StyleNest.Catalog.API/Dockerfile }
+          - { name: cart-api,     dockerfile: backend/src/Services/StyleNest.Cart.API/Dockerfile }
+          - { name: order-api,    dockerfile: backend/src/Services/StyleNest.Order.API/Dockerfile }
+          - { name: admin-api,    dockerfile: backend/src/Services/StyleNest.Admin.API/Dockerfile }
+          - { name: seller-api,   dockerfile: backend/src/Services/StyleNest.Seller.API/Dockerfile }
+          - { name: gateway-api,  dockerfile: backend/src/Services/StyleNest.Gateway.API/Dockerfile }
+          - { name: media-api,    dockerfile: backend/src/Services/StyleNest.Media.API/Dockerfile }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image — ${{ matrix.service.name }}
+        run: >
+          docker build
+          --file ${{ matrix.service.dockerfile }}
+          --tag stylenest/${{ matrix.service.name }}:ci
+          ./backend
+
+  # ─────────────────────────────────────────────────────────
+  # Frontend — TypeScript check + production build (user-panel)
+  # ─────────────────────────────────────────────────────────
+  user-panel:
+    name: User Panel TypeScript + Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: user-panel/package-lock.json
+
+      - name: Install dependencies
+        working-directory: user-panel
+        run: npm ci
+
+      - name: TypeScript strict check
+        working-directory: user-panel
+        run: npx tsc --noEmit
+
+      - name: Production build
+        working-directory: user-panel
+        run: npx ng build --configuration production
+
+  # ─────────────────────────────────────────────────────────
+  # Frontend — TypeScript check + production build (admin-panel)
+  # ─────────────────────────────────────────────────────────
+  admin-panel:
+    name: Admin Panel TypeScript + Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: admin-panel/package-lock.json
+
+      - name: Install dependencies
+        working-directory: admin-panel
+        run: npm ci
+
+      - name: TypeScript strict check
+        working-directory: admin-panel
+        run: npx tsc --noEmit
+
+      - name: Production build
+        working-directory: admin-panel
+        run: npx ng build --configuration production

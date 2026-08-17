@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path 'e:\\\\Projects\\\\TATA-STYLENEST-Fashion-Replica-Assignment-DotNetCore-Angular-SQL\\\\style-nest-ecommerce-clone-dotnet-angular-sql' -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(git ls-tree *)",
+      "PowerShell(Get-ChildItem -Path \"e:\\\\Projects\\\\TATA-STYLENEST-Fashion-Replica-Assignment-DotNetCore-Angular-SQL\\\\style-nest-ecommerce-clone-dotnet-angular-sql\" -Recurse -Exclude \".git\" | Where-Object { !$_.FullName.Contains\\(\"\\\\.git\\\\\"\\) } | Select-Object FullName | Sort-Object FullName)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(ls -la \"e:\\\\\\\\Projects\\\\\\\\TATA-STYLENEST-Fashion-Replica-Assignment-DotNetCore-Angular-SQL\\\\\\\\style-nest-ecommerce-clone-dotnet-angular-sql\")",
+      "Bash(find \"e:\\\\\\\\Projects\\\\\\\\TATA-STYLENEST-Fashion-Replica-Assignment-DotNetCore-Angular-SQL\\\\\\\\style-nest-ecommerce-clone-dotnet-angular-sql\" -maxdepth 3 -type f -o -maxdepth 3 -type d)",
+      "Bash(cd \"e:\\\\\\\\Projects\\\\\\\\TATA-STYLENEST-Fashion-Replica-Assignment-DotNetCore-Angular-SQL\\\\\\\\style-nest-ecommerce-clone-dotnet-angular-sql\")",
+      "Bash(dotnet --version)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet new *)",
+      "Bash(dotnet sln *)",
+      "Bash(Remove-Item \"e:\\\\Projects\\\\TATA-STYLENEST-Fashion-Replica-Assignment-DotNetCore-Angular-SQL\\\\style-nest-ecommerce-clone-dotnet-angular-sql\\\\backend\\\\src\\\\Shared\\\\StyleNest.SharedKernel\\\\Class1.cs\")",
+      "Bash(dotnet build *)"
+    ]
+  }
+}

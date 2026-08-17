@@ -1,0 +1,393 @@
+# ============================================================
+# ENH-INFRA-006 — Blue-Green Deployment Stack (standalone)
+#
+# Usage (local):
+#   docker compose -f docker-compose.blue-green.yml up --build -d
+#   ./scripts/blue-green-swap.sh promote-green   # shift traffic to green
+#   ./scripts/blue-green-swap.sh rollback         # revert to blue
+#   ./scripts/blue-green-swap.sh monitor          # watch & auto-rollback
+#
+# Port layout:
+#   :5000  → nginx router  (traffic-managed entry point)
+#   Blue gateway  — stylenest-gateway-api-blue:80  (internal only)
+#   Green gateway — stylenest-gateway-api-green:80 (internal only)
+# ============================================================
+
+x-sql-env: &sql-env
+  ASPNETCORE_URLS: http://+:80
+  ConnectionStrings__DefaultConnection: >-
+    Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;
+    Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True
+
+x-healthcheck: &api-healthcheck
+  test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 20s
+
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # Shared infrastructure (single instance)
+  # ──────────────────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: stylenest-sqlserver-bg
+    environment:
+      SA_PASSWORD: ${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!}
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+    volumes:
+      - sqlserver_bg_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$SA_PASSWORD\" -Q 'SELECT 1' -b -No"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - stylenest-bg-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: stylenest-redis-bg
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - stylenest-bg-net
+
+  # ──────────────────────────────────────────────────────────
+  # BLUE slot — stable / current production image
+  # ──────────────────────────────────────────────────────────
+  auth-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Auth.API/Dockerfile
+    container_name: stylenest-auth-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  user-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.User.API/Dockerfile
+    container_name: stylenest-user-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  catalog-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Catalog.API/Dockerfile
+    container_name: stylenest-catalog-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Redis: "redis:6379"
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+      redis:     { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  cart-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Cart.API/Dockerfile
+    container_name: stylenest-cart-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  order-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Order.API/Dockerfile
+    container_name: stylenest-order-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  admin-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Admin.API/Dockerfile
+    container_name: stylenest-admin-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  seller-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Seller.API/Dockerfile
+    container_name: stylenest-seller-api-blue
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: blue
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  gateway-api-blue:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Gateway.API/Dockerfile
+    container_name: stylenest-gateway-api-blue
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      SLOT: blue
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth__Address:       "http://auth-api-blue:80/"
+      ReverseProxy__Clusters__user-cluster__Destinations__user__Address:       "http://user-api-blue:80/"
+      ReverseProxy__Clusters__catalog-cluster__Destinations__catalog__Address: "http://catalog-api-blue:80/"
+      ReverseProxy__Clusters__cart-cluster__Destinations__cart__Address:       "http://cart-api-blue:80/"
+      ReverseProxy__Clusters__order-cluster__Destinations__order__Address:     "http://order-api-blue:80/"
+      ReverseProxy__Clusters__admin-cluster__Destinations__admin__Address:     "http://admin-api-blue:80/"
+      ReverseProxy__Clusters__seller-cluster__Destinations__seller__Address:   "http://seller-api-blue:80/"
+    depends_on:
+      auth-api-blue:    { condition: service_healthy }
+      user-api-blue:    { condition: service_healthy }
+      catalog-api-blue: { condition: service_healthy }
+      cart-api-blue:    { condition: service_healthy }
+      order-api-blue:   { condition: service_healthy }
+      admin-api-blue:   { condition: service_healthy }
+      seller-api-blue:  { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - stylenest-bg-net
+
+  # ──────────────────────────────────────────────────────────
+  # GREEN slot — candidate / new image under test
+  # (build args allow overriding image tag for CI)
+  # ──────────────────────────────────────────────────────────
+  auth-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Auth.API/Dockerfile
+    container_name: stylenest-auth-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/auth-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  user-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.User.API/Dockerfile
+    container_name: stylenest-user-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/user-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  catalog-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Catalog.API/Dockerfile
+    container_name: stylenest-catalog-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/catalog-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Redis: "redis:6379"
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+      redis:     { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  cart-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Cart.API/Dockerfile
+    container_name: stylenest-cart-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/cart-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  order-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Order.API/Dockerfile
+    container_name: stylenest-order-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/order-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  admin-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Admin.API/Dockerfile
+    container_name: stylenest-admin-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/admin-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  seller-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Seller.API/Dockerfile
+    container_name: stylenest-seller-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/seller-api:green}
+    environment:
+      <<: *sql-env
+      ASPNETCORE_ENVIRONMENT: Production
+      SLOT: green
+    depends_on:
+      sqlserver: { condition: service_healthy }
+    healthcheck: *api-healthcheck
+    networks:
+      - stylenest-bg-net
+
+  gateway-api-green:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Gateway.API/Dockerfile
+    container_name: stylenest-gateway-api-green
+    image: ${GREEN_IMAGE_TAG:-stylenest/gateway-api:green}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      SLOT: green
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth__Address:       "http://auth-api-green:80/"
+      ReverseProxy__Clusters__user-cluster__Destinations__user__Address:       "http://user-api-green:80/"
+      ReverseProxy__Clusters__catalog-cluster__Destinations__catalog__Address: "http://catalog-api-green:80/"
+      ReverseProxy__Clusters__cart-cluster__Destinations__cart__Address:       "http://cart-api-green:80/"
+      ReverseProxy__Clusters__order-cluster__Destinations__order__Address:     "http://order-api-green:80/"
+      ReverseProxy__Clusters__admin-cluster__Destinations__admin__Address:     "http://admin-api-green:80/"
+      ReverseProxy__Clusters__seller-cluster__Destinations__seller__Address:   "http://seller-api-green:80/"
+    depends_on:
+      auth-api-green:    { condition: service_healthy }
+      user-api-green:    { condition: service_healthy }
+      catalog-api-green: { condition: service_healthy }
+      cart-api-green:    { condition: service_healthy }
+      order-api-green:   { condition: service_healthy }
+      admin-api-green:   { condition: service_healthy }
+      seller-api-green:  { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - stylenest-bg-net
+
+  # ──────────────────────────────────────────────────────────
+  # Traffic Router — nginx with hot-reload slot switching
+  # Active slot is controlled by ./infra/nginx/active-slot file
+  # containing either "blue" or "green".
+  # Reload: docker exec stylenest-router nginx -s reload
+  # ──────────────────────────────────────────────────────────
+  router:
+    image: nginx:1.27-alpine
+    container_name: stylenest-router
+    ports:
+      - "5000:80"   # public-facing entry point
+      - "5099:8080" # router health / status page (stub_status)
+    volumes:
+      - ./infra/nginx/blue.conf:/etc/nginx/conf.d/blue.conf:ro
+      - ./infra/nginx/green.conf:/etc/nginx/conf.d/green.conf:ro
+      - ./infra/nginx/router.conf:/etc/nginx/conf.d/default.conf:ro
+      - router_active:/etc/nginx/active    # swap script writes "blue" or "green" here
+    depends_on:
+      gateway-api-blue:  { condition: service_healthy }
+      gateway-api-green: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/nginx-health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - stylenest-bg-net
+
+volumes:
+  sqlserver_bg_data:
+  router_active:
+
+networks:
+  stylenest-bg-net:
+    driver: bridge

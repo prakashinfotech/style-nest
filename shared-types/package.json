@@ -1,0 +1,15 @@
+{
+  "name": "@stylenest/shared-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript interfaces for admin-panel and user-storefront",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

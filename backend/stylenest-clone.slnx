@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Services/">
+    <Project Path="src/Services/StyleNest.Auth.API/StyleNest.Auth.API.csproj" />
+    <Project Path="src/Services/StyleNest.User.API/StyleNest.User.API.csproj" />
+    <Project Path="src/Services/StyleNest.Catalog.API/StyleNest.Catalog.API.csproj" />
+    <Project Path="src/Services/StyleNest.Cart.API/StyleNest.Cart.API.csproj" />
+    <Project Path="src/Services/StyleNest.Order.API/StyleNest.Order.API.csproj" />
+    <Project Path="src/Services/StyleNest.Admin.API/StyleNest.Admin.API.csproj" />
+    <Project Path="src/Services/StyleNest.Seller.API/StyleNest.Seller.API.csproj" />
+    <Project Path="src/Services/StyleNest.Gateway.API/StyleNest.Gateway.API.csproj" />
+    <Project Path="src/Services/StyleNest.Media.API/StyleNest.Media.API.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/StyleNest.Infrastructure/StyleNest.Infrastructure.csproj" />
+    <Project Path="src/Shared/StyleNest.SharedKernel/StyleNest.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StyleNest.Admin.Tests/StyleNest.Admin.Tests.csproj" />
+    <Project Path="tests/StyleNest.Auth.Tests/StyleNest.Auth.Tests.csproj" />
+    <Project Path="tests/StyleNest.Catalog.Tests/StyleNest.Catalog.Tests.csproj" />
+    <Project Path="tests/StyleNest.Cart.Tests/StyleNest.Cart.Tests.csproj" />
+    <Project Path="tests/StyleNest.Order.Tests/StyleNest.Order.Tests.csproj" />
+    <Project Path="tests/StyleNest.Seller.Tests/StyleNest.Seller.Tests.csproj" />
+    <Project Path="tests/StyleNest.User.Tests/StyleNest.User.Tests.csproj" />
+  </Folder>
+</Solution>

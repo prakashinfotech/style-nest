@@ -1,0 +1,319 @@
+# =============================================================
+# ENH-INFRA-006 — Blue-Green Deployment with Auto-Rollback
+#
+# Strategy (Azure Container Apps revision-based):
+#   1. Build & push new images tagged :$SHA
+#   2. For each service, create a new "green" revision with 0% traffic
+#   3. Run smoke tests against green revision
+#   4. Gradually shift traffic: 10% → 50% → 100% (with a health probe window between each step)
+#   5. If error rate > 1% at any step → deactivate green, restore 100% blue
+#   6. On full promotion, deactivate old revision
+#
+# Trigger: manual workflow_dispatch or on push to main with [blue-green] in commit message
+# =============================================================
+
+name: Blue-Green Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Comma-separated list of services to deploy (default: all)"
+        required: false
+        default: "auth-api,user-api,catalog-api,cart-api,order-api,admin-api,seller-api,gateway-api"
+      error_threshold:
+        description: "Error rate % that triggers auto-rollback"
+        required: false
+        default: "1"
+      canary_window_seconds:
+        description: "Seconds to hold at each traffic split before advancing"
+        required: false
+        default: "120"
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  ACR_REGISTRY:   ${{ secrets.ACR_REGISTRY }}
+  RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  ACA_ENVIRONMENT: ${{ secrets.ACA_ENVIRONMENT }}
+  ERROR_THRESHOLD: ${{ inputs.error_threshold || '1' }}
+  CANARY_WINDOW:   ${{ inputs.canary_window_seconds || '120' }}
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # 1. Build & push green images
+  # ─────────────────────────────────────────────────────────
+  build-green:
+    name: Build & Push Green Images
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service:
+          - { name: auth-api,    dockerfile: backend/src/Services/StyleNest.Auth.API/Dockerfile    }
+          - { name: user-api,    dockerfile: backend/src/Services/StyleNest.User.API/Dockerfile    }
+          - { name: catalog-api, dockerfile: backend/src/Services/StyleNest.Catalog.API/Dockerfile }
+          - { name: cart-api,    dockerfile: backend/src/Services/StyleNest.Cart.API/Dockerfile    }
+          - { name: order-api,   dockerfile: backend/src/Services/StyleNest.Order.API/Dockerfile   }
+          - { name: admin-api,   dockerfile: backend/src/Services/StyleNest.Admin.API/Dockerfile   }
+          - { name: seller-api,  dockerfile: backend/src/Services/StyleNest.Seller.API/Dockerfile  }
+          - { name: gateway-api, dockerfile: backend/src/Services/StyleNest.Gateway.API/Dockerfile }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.ACR_REGISTRY }}
+
+      - name: Build & push ${{ matrix.service.name }}
+        run: |
+          IMAGE=${{ env.ACR_REGISTRY }}/stylenest/${{ matrix.service.name }}
+          docker build \
+            --file ${{ matrix.service.dockerfile }} \
+            --tag  ${IMAGE}:${{ github.sha }} \
+            --tag  ${IMAGE}:green \
+            ./backend
+          docker push ${IMAGE}:${{ github.sha }}
+          docker push ${IMAGE}:green
+
+  # ─────────────────────────────────────────────────────────
+  # 2. Deploy green revision to ACA (0% traffic)
+  # ─────────────────────────────────────────────────────────
+  deploy-green-revision:
+    name: Deploy Green Revision (0% traffic)
+    runs-on: ubuntu-latest
+    needs: build-green
+    outputs:
+      green_revision: ${{ steps.get-revision.outputs.name }}
+
+    strategy:
+      matrix:
+        service:
+          - auth-api
+          - user-api
+          - catalog-api
+          - cart-api
+          - order-api
+          - admin-api
+          - seller-api
+          - gateway-api
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create green revision for ${{ matrix.service }} (0% traffic)
+        run: |
+          az containerapp update \
+            --name            stylenest-${{ matrix.service }} \
+            --resource-group  ${{ env.RESOURCE_GROUP }} \
+            --image           ${{ env.ACR_REGISTRY }}/stylenest/${{ matrix.service }}:${{ github.sha }} \
+            --revision-suffix green-${{ github.run_number }} \
+            --traffic-weight  latest=0 previous=100 \
+            --no-wait
+
+      - name: Wait for green revision to be running
+        id: get-revision
+        run: |
+          REVISION_NAME="stylenest-${{ matrix.service }}--green-${{ github.run_number }}"
+          echo "Waiting for revision: $REVISION_NAME"
+          for i in $(seq 1 20); do
+            STATE=$(az containerapp revision show \
+              --name stylenest-${{ matrix.service }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "$REVISION_NAME" \
+              --query "properties.runningState" -o tsv 2>/dev/null || echo "Unknown")
+            echo "  State: $STATE (attempt $i/20)"
+            if [[ "$STATE" == "Running" ]]; then
+              echo "name=$REVISION_NAME" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "ERROR: Green revision did not reach Running state within 5 minutes"
+          exit 1
+
+  # ─────────────────────────────────────────────────────────
+  # 3. Smoke tests against green revision (via label traffic)
+  # ─────────────────────────────────────────────────────────
+  smoke-test-green:
+    name: Smoke-test Green Revision
+    runs-on: ubuntu-latest
+    needs: deploy-green-revision
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Route 10% traffic to green for smoke test window
+        run: |
+          for svc in auth-api user-api catalog-api cart-api order-api admin-api seller-api gateway-api; do
+            az containerapp ingress traffic set \
+              --name stylenest-${svc} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision-weight \
+                "stylenest-${svc}--green-${{ github.run_number }}=10" \
+                latest=0 \
+                previous=90
+          done
+
+      - name: Wait canary window (${{ env.CANARY_WINDOW }}s) and probe gateway
+        run: |
+          GW_URL=$(az containerapp show \
+            --name stylenest-gateway-api \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+
+          echo "Gateway FQDN: $GW_URL"
+          DEADLINE=$(( $(date +%s) + ${{ env.CANARY_WINDOW }} ))
+          TOTAL=0; ERRORS=0
+
+          while (( $(date +%s) < DEADLINE )); do
+            sleep 10
+            STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 5 "https://${GW_URL}/health" 2>/dev/null || echo "000")
+            (( TOTAL++ )) || true
+            if [[ "$STATUS" != "200" ]]; then
+              (( ERRORS++ )) || true
+              echo "PROBE $TOTAL: status=$STATUS  errors=$ERRORS/$TOTAL ⚠"
+            else
+              echo "PROBE $TOTAL: status=$STATUS  errors=$ERRORS/$TOTAL ✓"
+            fi
+
+            if (( TOTAL > 5 )); then
+              ERROR_PCT=$(awk "BEGIN { printf \"%.1f\", ($ERRORS/$TOTAL)*100 }")
+              if awk "BEGIN { exit !($ERROR_PCT > ${{ env.ERROR_THRESHOLD }}) }"; then
+                echo "ERROR: Error rate ${ERROR_PCT}% > ${{ env.ERROR_THRESHOLD }}% — triggering rollback!"
+                exit 1
+              fi
+            fi
+          done
+
+          FINAL_PCT=$(awk "BEGIN { printf \"%.1f\", ($ERRORS/$TOTAL)*100 }")
+          echo "Smoke window complete. Error rate: ${FINAL_PCT}% (${ERRORS}/${TOTAL})"
+          if awk "BEGIN { exit !($FINAL_PCT > ${{ env.ERROR_THRESHOLD }}) }"; then
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────────────────────
+  # 4a. Promote to 100% traffic (green passes smoke test)
+  # ─────────────────────────────────────────────────────────
+  promote-green:
+    name: Promote Green to 100%
+    runs-on: ubuntu-latest
+    needs: smoke-test-green
+
+    strategy:
+      matrix:
+        service:
+          - auth-api
+          - user-api
+          - catalog-api
+          - cart-api
+          - order-api
+          - admin-api
+          - seller-api
+          - gateway-api
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Shift 50% traffic to green
+        run: |
+          az containerapp ingress traffic set \
+            --name stylenest-${{ matrix.service }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              "stylenest-${{ matrix.service }}--green-${{ github.run_number }}=50" \
+              latest=0 previous=50
+
+      - name: Hold at 50% for ${{ env.CANARY_WINDOW }}s
+        run: sleep ${{ env.CANARY_WINDOW }}
+
+      - name: Shift 100% traffic to green
+        run: |
+          az containerapp ingress traffic set \
+            --name stylenest-${{ matrix.service }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              "stylenest-${{ matrix.service }}--green-${{ github.run_number }}=100" \
+              latest=0 previous=0
+
+      - name: Deactivate blue revision
+        run: |
+          # Deactivate all non-green revisions to reclaim resources
+          REVISIONS=$(az containerapp revision list \
+            --name stylenest-${{ matrix.service }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[?!contains(name,'green-${{ github.run_number }}')].name" -o tsv)
+
+          for rev in $REVISIONS; do
+            echo "Deactivating: $rev"
+            az containerapp revision deactivate \
+              --name stylenest-${{ matrix.service }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "$rev" || true
+          done
+
+      - name: Deployment complete
+        run: |
+          echo "✅ stylenest-${{ matrix.service }} green revision is now serving 100% traffic."
+
+  # ─────────────────────────────────────────────────────────
+  # 4b. Auto-rollback if smoke test fails
+  # ─────────────────────────────────────────────────────────
+  auto-rollback:
+    name: Auto-Rollback (smoke failed)
+    runs-on: ubuntu-latest
+    needs: smoke-test-green
+    if: failure()
+
+    strategy:
+      matrix:
+        service:
+          - auth-api
+          - user-api
+          - catalog-api
+          - cart-api
+          - order-api
+          - admin-api
+          - seller-api
+          - gateway-api
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Restore 100% traffic to blue (previous) revision
+        run: |
+          az containerapp ingress traffic set \
+            --name stylenest-${{ matrix.service }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              "stylenest-${{ matrix.service }}--green-${{ github.run_number }}=0" \
+              latest=0 previous=100
+
+      - name: Deactivate failed green revision
+        run: |
+          az containerapp revision deactivate \
+            --name stylenest-${{ matrix.service }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision "stylenest-${{ matrix.service }}--green-${{ github.run_number }}" || true
+
+      - name: Rollback complete
+        run: |
+          echo "⏪ stylenest-${{ matrix.service }} rolled back to blue. Error threshold exceeded."

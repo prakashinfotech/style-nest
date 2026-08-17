@@ -1,0 +1,8 @@
+# <type>(<scope>): <short description>  ← 72 chars max, imperative mood
+# |<---- max 72 chars ---->|
+#
+# Types: feat | fix | refactor | test | docs | style | chore
+# Scopes: auth | catalog | cart | order | user | admin | seller | shared | frontend | infra | docs
+#
+# Why was this change made? (optional body — blank line after subject)
+#

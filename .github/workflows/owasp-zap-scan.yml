@@ -1,0 +1,49 @@
+name: OWASP ZAP Security Scan (ENH-INFRA-009)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "API Gateway base URL to scan"
+        required: true
+        default: "https://api.staging.stylenest.example.com"
+
+jobs:
+  zap-scan:
+    name: OWASP ZAP Scan
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ inputs.target_url || 'https://api.staging.stylenest.example.com' }}
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a -j -T 120"
+          fail_action: true
+          artifact_name: zap-report
+
+      - name: Upload ZAP HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-scan-report-${{ github.run_id }}
+          path: |
+            report_html.html
+            report_json.json
+          retention-days: 30
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: report_sarif.json

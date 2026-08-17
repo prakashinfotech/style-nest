@@ -1,0 +1,205 @@
+@use '@angular/material' as mat;
+
+// Tailwind base, components, utilities
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+// Design-token CSS variables (DESIGN.md §2.1 — StyleNest Fashion)
+:root {
+  // Primary brand
+  --sn-red:        #E31837;
+  --sn-dark:       #1A1A1A;
+  --sn-white:      #FFFFFF;
+
+  // Secondary
+  --sn-navy:       #1C2B4A;
+  --sn-gold:       #C9A84C;
+  --sn-light-gray: #F5F5F5;
+  --sn-mid-gray:   #9E9E9E;
+  --sn-border:     #E0E0E0;
+
+  // Functional
+  --sn-success:    #2E7D32;
+  --sn-warning:    #F57C00;
+  --sn-error:      #C62828;
+  --sn-discount:   #E31837;
+  --sn-blue:       #0071C2;
+
+  // Gradients
+  --sn-hero-gradient: linear-gradient(135deg, #1C2B4A 0%, #2C3E70 100%);
+  --sn-sale-gradient: linear-gradient(90deg, #E31837 0%, #FF6B35 100%);
+
+  // Border radii
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  // Shadows
+  --shadow-xs:         0 1px 2px rgba(0,0,0,0.06);
+  --shadow-sm:         0 2px 8px rgba(0,0,0,0.08);
+  --shadow-md:         0 4px 16px rgba(0,0,0,0.10);
+  --shadow-lg:         0 8px 32px rgba(0,0,0,0.12);
+  --shadow-xl:         0 16px 48px rgba(0,0,0,0.16);
+  --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.14);
+
+  // Typography
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'DM Sans', -apple-system, sans-serif;
+
+  // Legacy aliases (keep for existing Tailwind classes)
+  --color-navy:    #1C2B4A;
+  --color-red:     #E31837;
+  --color-blue:    #0071C2;
+  --color-bg:      #F5F5F5;
+  --color-card:    #FFFFFF;
+  --color-text:    #1A1A1A;
+  --color-muted:   #757575;
+  --color-gold:    #C9A84C;
+  --color-success: #2E7D32;
+}
+
+html {
+  height: 100%;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      typography: 'DM Sans',
+      density: 0,
+    )
+  );
+}
+
+body {
+  color-scheme: light;
+  background-color: var(--sn-light-gray);
+  color: var(--sn-dark);
+  font-family: var(--font-body);
+  margin: 0;
+  height: 100%;
+}
+
+// Focus ring — DESIGN.md §10 Accessibility
+// Excluded from search inputs: the pill wrapper uses focus-within border/shadow instead.
+*:focus-visible {
+  outline: 2px solid var(--sn-red);
+  outline-offset: 2px;
+}
+
+// Search inputs inside the pill wrapper get no outline — the wrapper handles focus state.
+.search-pill input:focus-visible,
+.search-pill button:focus-visible {
+  outline: none;
+}
+
+// Skip-to-content link — visually hidden until focused
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: 16px;
+  z-index: 9999;
+  background: var(--sn-red);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.2s;
+
+  &:focus {
+    top: 8px;
+  }
+}
+
+// Utility: font-display
+.font-display {
+  font-family: var(--font-display) !important;
+}
+
+// Shimmer skeleton animation — DESIGN.md §4.15
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+// Heart pop animation — DESIGN.md §6 wishlist-heart-pop
+@keyframes heart-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+.heart-pop {
+  animation: heart-pop 300ms ease-in-out forwards;
+}
+
+// Slide progress bar — DESIGN.md §4.4 hero-progress-fill
+@keyframes progress-fill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+.progress-fill {
+  animation: progress-fill linear forwards;
+}
+
+// Page fade in — DESIGN.md §6 page-fade-in
+@keyframes page-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.page-fade-in {
+  animation: page-fade-in 200ms ease forwards;
+}
+
+// Dropdown reveal — DESIGN.md §6 dropdown-reveal
+@keyframes dropdown-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-reveal {
+  animation: dropdown-reveal 200ms ease-out forwards;
+}
+
+// Pulse skeleton variant — DESIGN.md §4.15
+@keyframes pulse-fade {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.pulse-fade {
+  animation: pulse-fade 2s ease-in-out infinite;
+}
+
+// Reduced-motion — DESIGN.md §6 & §10
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

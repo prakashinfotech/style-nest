@@ -1,0 +1,13 @@
+# ENH-INFRA-009 — OWASP ZAP rule overrides
+# Format: rule-id  WARN|IGNORE|FAIL  description
+# Fail on Critical and High severity findings (A01-A09 OWASP Top 10)
+# TC-OPS-SEC-001..003 / NFR-SEC-A01..A09
+
+# 10017 - Cross-Domain JavaScript Source File Inclusion → WARN (CDN assets are expected)
+10017	WARN	Cross-Domain JS inclusion (CDN acceptable)
+
+# 10202 - Absence of Anti-CSRF Tokens → WARN for GET endpoints
+10202	WARN	Anti-CSRF not required for GET endpoints
+
+# 90033 - Loosely Scoped Cookie → WARN (configured per-env)
+90033	WARN	Loosely scoped cookie (reviewed per environment)

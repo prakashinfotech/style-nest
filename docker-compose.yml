@@ -1,0 +1,401 @@
+# ============================================================
+# StyleNest E-Commerce Clone — Local Development Stack
+# Usage: docker compose up --build
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # SQL Server 2022
+  # ----------------------------------------------------------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: stylenest-sqlserver
+    environment:
+      # MSSQL_SA_PASSWORD is required for SQL Server 2022 (SA_PASSWORD was deprecated)
+      MSSQL_SA_PASSWORD: ${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!}
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -No"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Redis 7 — catalog cache (Phase 13)
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: stylenest-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Auth.API — :5001
+  # ----------------------------------------------------------
+  auth-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Auth.API/Dockerfile
+    container_name: stylenest-auth-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+    ports:
+      - "5001:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # User.API — :5002
+  # ----------------------------------------------------------
+  user-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.User.API/Dockerfile
+    container_name: stylenest-user-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+    ports:
+      - "5002:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Catalog.API — :5003
+  # ----------------------------------------------------------
+  catalog-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Catalog.API/Dockerfile
+    container_name: stylenest-catalog-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+      ConnectionStrings__Redis: "redis:6379"
+    ports:
+      - "5003:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Cart.API — :5004
+  # ----------------------------------------------------------
+  cart-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Cart.API/Dockerfile
+    container_name: stylenest-cart-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+    ports:
+      - "5004:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Order.API — :5005
+  # ----------------------------------------------------------
+  order-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Order.API/Dockerfile
+    container_name: stylenest-order-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+    ports:
+      - "5005:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Admin.API — :5009
+  # ----------------------------------------------------------
+  admin-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Admin.API/Dockerfile
+    container_name: stylenest-admin-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+    ports:
+      - "5009:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Seller.API — :5010
+  # ----------------------------------------------------------
+  seller-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Seller.API/Dockerfile
+    container_name: stylenest-seller-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+    ports:
+      - "5010:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Gateway.API — :5000 (entry point for all clients)
+  # Uses service_started (not service_healthy) so the gateway
+  # comes up as soon as API containers are running, not waiting
+  # for all healthchecks to pass — avoids deadlock on first boot.
+  # ----------------------------------------------------------
+  gateway-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Gateway.API/Dockerfile
+    container_name: stylenest-gateway-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth__Address: "http://auth-api:80/"
+      ReverseProxy__Clusters__user-cluster__Destinations__user__Address: "http://user-api:80/"
+      ReverseProxy__Clusters__catalog-cluster__Destinations__catalog__Address: "http://catalog-api:80/"
+      ReverseProxy__Clusters__cart-cluster__Destinations__cart__Address: "http://cart-api:80/"
+      ReverseProxy__Clusters__order-cluster__Destinations__order__Address: "http://order-api:80/"
+      ReverseProxy__Clusters__admin-cluster__Destinations__admin__Address: "http://admin-api:80/"
+      ReverseProxy__Clusters__seller-cluster__Destinations__seller__Address: "http://seller-api:80/"
+    ports:
+      - "5000:80"
+    depends_on:
+      auth-api:
+        condition: service_started
+      user-api:
+        condition: service_started
+      catalog-api:
+        condition: service_started
+      cart-api:
+        condition: service_started
+      order-api:
+        condition: service_started
+      admin-api:
+        condition: service_started
+      seller-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Media.API — :5011
+  # ----------------------------------------------------------
+  media-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Media.API/Dockerfile
+    container_name: stylenest-media-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD:-YourStr0ngP@ssword!};TrustServerCertificate=True;Command Timeout=300"
+      UseLocalStorage: "false"
+      Minio__Endpoint: "minio:9000"
+      Minio__RootUser: "${MINIO_ROOT_USER:-minioadmin}"
+      Minio__RootPassword: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      Minio__PublicEndpoint: "http://localhost:9000"
+    ports:
+      - "5011:80"
+    volumes:
+      - media_uploads:/app/uploads
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # MinIO — S3-compatible object storage :9000 (API) / :9001 (Console)
+  # ----------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: stylenest-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: on-failure
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # User Panel — :4200
+  # node_modules anonymous volume pattern ensures Linux-compiled
+  # binaries from the image are preserved over the host bind mount.
+  # ----------------------------------------------------------
+  user-panel:
+    build:
+      context: ./user-panel
+      dockerfile: Dockerfile.dev
+    container_name: stylenest-user-panel
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./user-panel:/app
+      - /app/node_modules
+      - /app/.angular
+    networks:
+      - stylenest-net
+    depends_on:
+      gateway-api:
+        condition: service_started
+
+  # ----------------------------------------------------------
+  # Admin Panel — :4201
+  # ----------------------------------------------------------
+  admin-panel:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile.dev
+    container_name: stylenest-admin-panel
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "4201:4201"
+    volumes:
+      - ./admin-panel:/app
+      - /app/node_modules
+    networks:
+      - stylenest-net
+    depends_on:
+      gateway-api:
+        condition: service_started
+
+volumes:
+  sqlserver_data:
+  redis_data:
+  minio_data:
+  media_uploads:
+
+networks:
+  stylenest-net:
+    driver: bridge

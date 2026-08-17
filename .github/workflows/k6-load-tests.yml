@@ -1,0 +1,60 @@
+name: k6 Load Tests (ENH-INFRA-008)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Target base URL (staging environment)"
+        required: true
+        default: "https://api.staging.stylenest.example.com"
+      test_type:
+        description: "Test type"
+        required: true
+        default: "spike"
+        type: choice
+        options:
+          - spike
+          - soak
+          - both
+  schedule:
+    # Run soak test every Sunday night (staging)
+    - cron: "0 2 * * 0"
+
+env:
+  K6_VERSION: "0.55.0"
+
+jobs:
+  k6-load-test:
+    name: k6 ${{ inputs.test_type || 'soak' }} test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          curl -fsSL https://dl.k6.io/deb/repo.gpg.key | sudo apt-key add -
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q
+          sudo apt-get install -q k6
+
+      - name: Run spike test
+        if: ${{ inputs.test_type == 'spike' || inputs.test_type == 'both' || github.event_name == 'schedule' }}
+        run: k6 run k6/spike-test.js --out json=k6-spike-results.json
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://api.staging.stylenest.example.com' }}
+
+      - name: Run soak test
+        if: ${{ inputs.test_type == 'soak' || inputs.test_type == 'both' || github.event_name == 'schedule' }}
+        run: k6 run k6/soak-test.js --out json=k6-soak-results.json
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://api.staging.stylenest.example.com' }}
+
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.run_id }}
+          path: k6-*-results.json
+          retention-days: 30

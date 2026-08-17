@@ -1,0 +1,48 @@
+@use '@angular/material' as mat;
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sn-red:        #E31837;
+  --sn-dark:       #1A1A1A;
+  --sn-white:      #FFFFFF;
+  --sn-navy:       #1C2B4A;
+  --sn-gold:       #C9A84C;
+  --sn-light-gray: #F5F5F5;
+  --sn-mid-gray:   #9E9E9E;
+  --sn-border:     #E0E0E0;
+  --sn-success:    #2E7D32;
+  --sn-warning:    #F57C00;
+  --sn-error:      #C62828;
+  --sn-blue:       #0071C2;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'DM Sans', -apple-system, sans-serif;
+}
+
+html {
+  height: 100%;
+  @include mat.theme((
+    color: (
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+    ),
+    typography: 'DM Sans',
+    density: 0,
+  ));
+}
+
+body {
+  color-scheme: light;
+  background-color: var(--sn-light-gray);
+  color: var(--sn-dark);
+  font-family: var(--font-body);
+  margin: 0;
+  height: 100%;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--sn-navy);
+  outline-offset: 2px;
+}
