@@ -35,11 +35,11 @@ const MEGA_MENU_DATA: Record<string, MegaMenuData> = {
       {
         heading: 'Clothing',
         links: [
-          { label: 'Kurtas & Suits',   slug: 'kurtas-suits' },
-          { label: 'Sarees',           slug: 'sarees' },
-          { label: 'Dresses',          slug: 'dresses' },
-          { label: 'Tops & Tees',      slug: 'tops-tees' },
-          { label: 'Jeans',            slug: 'jeans' },
+          { label: 'Kurtas & Suits',   slug: 'women-ethnic' },
+          { label: 'Sarees',           slug: 'women-ethnic' },
+          { label: 'Dresses',          slug: 'women-dresses' },
+          { label: 'Tops & Tees',      slug: 'women-tops' },
+          { label: 'Jeans',            slug: 'women-jeans' },
         ],
       },
       {
@@ -83,11 +83,11 @@ const MEGA_MENU_DATA: Record<string, MegaMenuData> = {
       {
         heading: 'Clothing',
         links: [
-          { label: 'Shirts',          slug: 'shirts' },
-          { label: 'T-Shirts',        slug: 't-shirts' },
+          { label: 'Shirts',          slug: 'men-shirts' },
+          { label: 'T-Shirts',        slug: 'men-tshirts' },
           { label: 'Trousers',        slug: 'trousers' },
-          { label: 'Jeans',           slug: 'jeans' },
-          { label: 'Ethnic Wear',     slug: 'ethnic-wear' },
+          { label: 'Jeans',           slug: 'men-jeans' },
+          { label: 'Jackets',         slug: 'men-jackets' },
         ],
       },
       {

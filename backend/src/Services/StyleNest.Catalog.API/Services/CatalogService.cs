@@ -60,7 +60,23 @@ public sealed class CatalogService(
             .Where(p => p.IsActive); // storefront should never show inactive products
 
         if (query.CategoryId.HasValue)
-            q = q.Where(p => p.CategoryId == query.CategoryId.Value);
+        {
+            var catId = query.CategoryId.Value;
+            var subCategoryIds = await db.Categories
+                .Where(c => c.ParentId == catId)
+                .Select(c => c.Id)
+                .ToListAsync(ct);
+
+            if (subCategoryIds.Count > 0)
+            {
+                var allCategoryIds = subCategoryIds.Concat([catId]).ToList();
+                q = q.Where(p => allCategoryIds.Contains(p.CategoryId));
+            }
+            else
+            {
+                q = q.Where(p => p.CategoryId == catId);
+            }
+        }
 
         if (query.BrandId.HasValue)
             q = q.Where(p => p.BrandId == query.BrandId.Value);

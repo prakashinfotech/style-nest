@@ -16,8 +16,41 @@ public class TokenService : ITokenService
         _config = config;
 
         var rsa = RSA.Create();
-        var privateKeyPem = config["Jwt:PrivateKey"]
+        var keyInput = config["Jwt:PrivateKey"] ?? config["Jwt:PrivateKeyPath"]
             ?? throw new InvalidOperationException("Jwt:PrivateKey not configured.");
+
+        string privateKeyPem;
+        if (keyInput.Contains("-----BEGIN"))
+        {
+            privateKeyPem = keyInput;
+        }
+        else
+        {
+            var candidates = new[]
+            {
+                keyInput,
+                Path.Combine(AppContext.BaseDirectory, keyInput),
+                Path.Combine(Directory.GetCurrentDirectory(), keyInput),
+                "/app/keys/private.pem",
+                "/app/private.pem",
+                "./keys/private.pem",
+                "./private.pem",
+                "keys/private.pem",
+                "private.pem"
+            };
+
+            var found = candidates.FirstOrDefault(System.IO.File.Exists);
+            if (found != null)
+            {
+                privateKeyPem = System.IO.File.ReadAllText(found);
+            }
+            else
+            {
+                throw new FileNotFoundException(
+                    $"JWT private key file not found. Configured: '{keyInput}'. Checked paths: {string.Join(", ", candidates.Distinct())}");
+            }
+        }
+
         rsa.ImportFromPem(privateKeyPem);
         _signingCredentials = new SigningCredentials(
             new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256);

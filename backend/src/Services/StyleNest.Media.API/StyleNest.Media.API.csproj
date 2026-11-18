@@ -19,7 +19,7 @@
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
     <PackageReference Include="Hangfire.SqlServer" Version="1.8.*" />
     <!-- ENH-ADMIN-004 — SixLabors.ImageSharp for server-side image resizing -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.*" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.7" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.7" />
     <PackageReference Include="Microsoft.OpenApi" Version="2.*" />

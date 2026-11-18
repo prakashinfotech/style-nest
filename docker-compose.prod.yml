@@ -1,0 +1,416 @@
+# ============================================================
+# StyleNest E-Commerce — Production Stack for Azure VM
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # SQL Server 2022
+  # ----------------------------------------------------------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: stylenest-sqlserver
+    restart: always
+    environment:
+      MSSQL_SA_PASSWORD: ${SQLSERVER_SA_PASSWORD}
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Standard
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -No"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Redis 7 (Cache)
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: stylenest-redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Auth.API
+  # ----------------------------------------------------------
+  auth-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Auth.API/Dockerfile
+    container_name: stylenest-auth-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      AllowedOrigins__3: "http://style-nest-api.prakashsoftwares.com"
+      Jwt__PrivateKeyPath: "/app/keys/private.pem"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+      OtpDelivery__Provider: "Logging"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # User.API
+  # ----------------------------------------------------------
+  user-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.User.API/Dockerfile
+    container_name: stylenest-user-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Catalog.API
+  # ----------------------------------------------------------
+  catalog-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Catalog.API/Dockerfile
+    container_name: stylenest-catalog-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      ConnectionStrings__Redis: "redis:6379"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Cart.API
+  # ----------------------------------------------------------
+  cart-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Cart.API/Dockerfile
+    container_name: stylenest-cart-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Order.API
+  # ----------------------------------------------------------
+  order-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Order.API/Dockerfile
+    container_name: stylenest-order-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Admin.API
+  # ----------------------------------------------------------
+  admin-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Admin.API/Dockerfile
+    container_name: stylenest-admin-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Seller.API
+  # ----------------------------------------------------------
+  seller-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Seller.API/Dockerfile
+    container_name: stylenest-seller-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Media.API
+  # ----------------------------------------------------------
+  media-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Media.API/Dockerfile
+    container_name: stylenest-media-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=StyleNestDb;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Command Timeout=300"
+      UseLocalStorage: "true"
+      LocalStorage__BasePath: "/app/uploads"
+      LocalStorage__BaseUrl: "https://style-nest-api.prakashsoftwares.com/uploads"
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+    volumes:
+      - media_uploads:/app/uploads
+      - ./keys:/app/keys:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # YARP Gateway.API (Bound to localhost:5000 for host Nginx)
+  # ----------------------------------------------------------
+  gateway-api:
+    build:
+      context: ./backend
+      dockerfile: src/Services/StyleNest.Gateway.API/Dockerfile
+    container_name: stylenest-gateway-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:80
+      AllowedOrigins__0: "https://style-nest.prakashsoftwares.com"
+      AllowedOrigins__1: "http://style-nest.prakashsoftwares.com"
+      AllowedOrigins__2: "https://style-nest-api.prakashsoftwares.com"
+      Jwt__PublicKeyPath: "/app/keys/public.pem"
+      Jwt__Issuer: "${Jwt__Issuer:-https://stylenest-auth.local}"
+      Jwt__Audience: "${Jwt__Audience:-stylenest-spa}"
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth__Address: "http://auth-api:80/"
+      ReverseProxy__Clusters__user-cluster__Destinations__user__Address: "http://user-api:80/"
+      ReverseProxy__Clusters__catalog-cluster__Destinations__catalog__Address: "http://catalog-api:80/"
+      ReverseProxy__Clusters__cart-cluster__Destinations__cart__Address: "http://cart-api:80/"
+      ReverseProxy__Clusters__order-cluster__Destinations__order__Address: "http://order-api:80/"
+      ReverseProxy__Clusters__admin-cluster__Destinations__admin__Address: "http://admin-api:80/"
+      ReverseProxy__Clusters__seller-cluster__Destinations__seller__Address: "http://seller-api:80/"
+    volumes:
+      - ./keys:/app/keys:ro
+    ports:
+      - "127.0.0.1:5027:80"
+    depends_on:
+      auth-api:
+        condition: service_started
+      user-api:
+        condition: service_started
+      catalog-api:
+        condition: service_started
+      cart-api:
+        condition: service_started
+      order-api:
+        condition: service_started
+      admin-api:
+        condition: service_started
+      seller-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # User Storefront SPA (Bound to localhost:4200 for host Nginx)
+  # ----------------------------------------------------------
+  user-panel:
+    build:
+      context: ./user-panel
+      dockerfile: Dockerfile
+    container_name: stylenest-user-panel
+    restart: always
+    ports:
+      - "127.0.0.1:4200:80"
+    depends_on:
+      gateway-api:
+        condition: service_started
+    networks:
+      - stylenest-net
+
+  # ----------------------------------------------------------
+  # Admin Panel SPA (Bound to localhost:4201 for host Nginx)
+  # ----------------------------------------------------------
+  admin-panel:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile
+    container_name: stylenest-admin-panel
+    restart: always
+    ports:
+      - "127.0.0.1:4201:80"
+    depends_on:
+      gateway-api:
+        condition: service_started
+    networks:
+      - stylenest-net
+
+volumes:
+  sqlserver_data:
+  redis_data:
+  media_uploads:
+
+networks:
+  stylenest-net:
+    driver: bridge
