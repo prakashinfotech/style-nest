@@ -14,8 +14,40 @@ public sealed class JwksController(IConfiguration configuration) : ControllerBas
     [ResponseCache(Duration = 900)] // 15 min — matches JwksKeyProvider cache TTL
     public IActionResult GetJwks()
     {
-        var pem = configuration["Jwt:PublicKey"]
+        var keyInput = configuration["Jwt:PublicKey"] ?? configuration["Jwt:PublicKeyPath"]
             ?? throw new InvalidOperationException("Jwt:PublicKey not configured.");
+
+        string pem;
+        if (keyInput.Contains("-----BEGIN"))
+        {
+            pem = keyInput;
+        }
+        else
+        {
+            var candidates = new[]
+            {
+                keyInput,
+                Path.Combine(AppContext.BaseDirectory, keyInput),
+                Path.Combine(Directory.GetCurrentDirectory(), keyInput),
+                "/app/keys/public.pem",
+                "/app/public.pem",
+                "./keys/public.pem",
+                "./public.pem",
+                "keys/public.pem",
+                "public.pem"
+            };
+
+            var found = candidates.FirstOrDefault(System.IO.File.Exists);
+            if (found != null)
+            {
+                pem = System.IO.File.ReadAllText(found);
+            }
+            else
+            {
+                throw new FileNotFoundException(
+                    $"JWT public key file not found. Configured: '{keyInput}'. Checked paths: {string.Join(", ", candidates.Distinct())}");
+            }
+        }
 
         var rsa = RSA.Create();
         rsa.ImportFromPem(pem);

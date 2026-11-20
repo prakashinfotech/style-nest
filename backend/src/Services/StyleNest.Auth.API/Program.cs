@@ -62,10 +62,11 @@ try
         .Get<OtpDeliveryOptions>() ?? new OtpDeliveryOptions();
     builder.Services.AddSingleton(otpOptions);
 
-    if (otpOptions.Provider == "AzureCommunication")
+    if (otpOptions.Provider == "AzureCommunication"
+        && !string.IsNullOrWhiteSpace(otpOptions.AzureCommunication?.ConnectionString)
+        && !otpOptions.AzureCommunication.ConnectionString.StartsWith("REPLACE"))
     {
-        var acsConnStr = otpOptions.AzureCommunication?.ConnectionString
-            ?? throw new InvalidOperationException("OtpDelivery:AzureCommunication:ConnectionString not configured.");
+        var acsConnStr = otpOptions.AzureCommunication.ConnectionString;
         builder.Services.AddSingleton(new EmailClient(acsConnStr));
         builder.Services.AddScoped<IOtpDeliveryChannel, AzureCommunicationOtpDeliveryChannel>();
     }

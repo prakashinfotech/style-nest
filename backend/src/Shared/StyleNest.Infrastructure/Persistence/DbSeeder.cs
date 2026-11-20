@@ -289,17 +289,37 @@ public static class DbSeeder
         string[] menAdj  = { "Classic", "Premium", "Casual", "Formal", "Slim Fit", "Relaxed Fit", "Vintage", "Modern", "Essential", "Signature" };
         string[] menNoun = { "T-Shirt", "Chinos", "Jeans", "Shirt", "Shorts", "Jacket", "Hoodie", "Sweater", "Polo", "Blazer" };
         Guid[] menBrands = [brands["nike"], brands["levis"], brands["hm"], brands["puma"], brands["zara"], brands["adidas"]];
-        products.AddRange(GenerateProducts(catMen, menAdj, menNoun, menBrands, "S,M,L,XL", "Black,White,Navy,Grey,Blue", "menswear", ref imgSeed, rand, GetSellerId));
+        products.AddRange(GenerateProducts(catMen, menAdj, menNoun, menBrands, "S,M,L,XL", "Black,White,Navy,Grey,Blue", "menswear", ref imgSeed, rand, GetSellerId,
+            noun => noun switch
+            {
+                "T-Shirt" => cats.GetValueOrDefault("men-tshirts", catMen),
+                "Shirt"   => cats.GetValueOrDefault("men-shirts", catMen),
+                "Jeans"   => cats.GetValueOrDefault("men-jeans", catMen),
+                "Jacket"  => cats.GetValueOrDefault("men-jackets", catMen),
+                _         => catMen
+            }));
 
         string[] womenAdj  = { "Elegant", "Casual", "Floral", "Chic", "Vintage", "Modern", "Designer", "Essential", "Classic", "Boho" };
         string[] womenNoun = { "Dress", "Blouse", "Skirt", "Jeans", "Top", "Cardigan", "Jacket", "Jumpsuit", "Leggings", "Tunic" };
         Guid[] womenBrands = [brands["zara"], brands["levis"], brands["hm"], brands["nike"], brands["westside"], brands["fabindia"]];
-        products.AddRange(GenerateProducts(catWomen, womenAdj, womenNoun, womenBrands, "XS,S,M,L,XL", "Black,White,Red,Pink,Blue", "womenswear", ref imgSeed, rand, GetSellerId));
+        products.AddRange(GenerateProducts(catWomen, womenAdj, womenNoun, womenBrands, "XS,S,M,L,XL", "Black,White,Red,Pink,Blue", "womenswear", ref imgSeed, rand, GetSellerId,
+            noun => noun switch
+            {
+                "Dress" => cats.GetValueOrDefault("women-dresses", catWomen),
+                "Top"   => cats.GetValueOrDefault("women-tops", catWomen),
+                "Jeans" => cats.GetValueOrDefault("women-jeans", catWomen),
+                _       => cats.GetValueOrDefault("women-ethnic", catWomen)
+            }));
 
         string[] kidsAdj  = { "Cute", "Playful", "Comfy", "Bright", "Cool", "Basic", "Active", "Fun", "Cozy", "Stylish" };
         string[] kidsNoun = { "T-Shirt", "Shorts", "Dress", "Jacket", "Sweater", "Pajamas", "Romper", "Jeans", "Hoodie", "Top" };
         Guid[] kidsBrands = [brands["hm"], brands["levis"], brands["nike"], brands["puma"], brands["adidas"], brands["zara"]];
-        products.AddRange(GenerateProducts(catKids, kidsAdj, kidsNoun, kidsBrands, "2-3Y,4-5Y,6-7Y,8-9Y", "Red,Blue,Green,Yellow,Pink", "kidswear", ref imgSeed, rand, GetSellerId));
+        products.AddRange(GenerateProducts(catKids, kidsAdj, kidsNoun, kidsBrands, "2-3Y,4-5Y,6-7Y,8-9Y", "Red,Blue,Green,Yellow,Pink", "kidswear", ref imgSeed, rand, GetSellerId,
+            noun => noun switch
+            {
+                "T-Shirt" or "Shorts" or "Jeans" or "Hoodie" => cats.GetValueOrDefault("kids-boys", catKids),
+                _ => cats.GetValueOrDefault("kids-girls", catKids)
+            }));
 
         string[] footAdj  = { "Comfortable", "Athletic", "Classic", "Stylish", "Premium", "Casual", "Formal", "Running", "Lightweight", "Durable" };
         string[] footNoun = { "Sneakers", "Boots", "Loafers", "Sandals", "Heels", "Flats", "Oxfords", "Slippers", "Trainers", "Wedges" };
@@ -358,9 +378,10 @@ public static class DbSeeder
     // ── Product generation helper ─────────────────────────────────────────────
 
     private static List<Product> GenerateProducts(
-        Guid categoryId, string[] adjectives, string[] nouns, Guid[] brands,
+        Guid defaultCategoryId, string[] adjectives, string[] nouns, Guid[] brands,
         string sizes, string colors, string imageKeyword, ref int imgSeed, Random rand,
-        Func<int, Guid?> getSellerId)
+        Func<int, Guid?> getSellerId,
+        Func<string, Guid>? getCategory = null)
     {
         var list = new List<Product>();
         int productIdx = 0;
@@ -371,6 +392,7 @@ public static class DbSeeder
             {
                 var productId = Guid.NewGuid();
                 var name = $"{adj} {noun}";
+                var categoryId = getCategory?.Invoke(noun) ?? defaultCategoryId;
                 var basePrice = Math.Round((decimal)(rand.NextDouble() * 5000 + 500) / 100) * 100 - 1;
                 var discPrice = rand.NextDouble() > 0.3
                     ? basePrice - (Math.Round((decimal)(rand.NextDouble() * 1000 + 100) / 100) * 100)

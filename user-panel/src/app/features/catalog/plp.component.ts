@@ -210,8 +210,24 @@ export class PlpComponent implements OnInit {
         const partial: Partial<ProductFilters> = { page: 1 };
         
         if (categorySlug) {
-          const cat = cats.find(c => c.slug === categorySlug || c.id === categorySlug);
-          partial.categoryId = cat ? cat.id : null;
+          // 1. Direct match on slug or id
+          let cat = cats.find(c => c.slug === categorySlug || c.id === categorySlug);
+
+          // 2. Normalize and check suffix/contains (e.g. 't-shirts' -> 'men-tshirts', 'dresses' -> 'women-dresses')
+          if (!cat) {
+            const clean = categorySlug.toLowerCase().replace(/[^a-z0-9]/g, '');
+            cat = cats.find(c => {
+              const cClean = c.slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+              return cClean === clean || cClean.endsWith(clean) || clean.endsWith(cClean) || cClean.includes(clean);
+            });
+          }
+
+          if (cat) {
+            partial.categoryId = cat.id;
+          } else {
+            partial.categoryId = null;
+            partial.search = categorySlug.replace(/-/g, ' ');
+          }
         } else {
           partial.categoryId = null;
         }
@@ -222,7 +238,7 @@ export class PlpComponent implements OnInit {
 
         if (search) {
           partial.search = search;
-        } else {
+        } else if (!categorySlug || partial.categoryId) {
           partial.search = null;
         }
 
